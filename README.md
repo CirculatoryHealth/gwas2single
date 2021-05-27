@@ -20,7 +20,7 @@ To identify disease-associated candidate genes, we applied gene-based analyses u
 **Conclusion**<br/>
 We confirm known gene-cell pairs relevant for atherosclerotic disease, and discovered novel pairs pointing to new biological mechanisms amenable for therapy. We present an intuitive single-cell transcriptomics driven workflow rooted in human large-scale genetic studies to identify putative candidate genes and affected cells associated with cardiovascular traits.
 
-![**Figure 1: An intuitive single-cell transcriptomics driven workflow using human genetics to identify cardiovascular candidate genes and relevant cells.** Adapted from [Slenders L. *et al*. **bioRxiv 2021**]()](figures/Figure1.png)
+<!-- ![**Figure 1: An intuitive single-cell transcriptomics driven workflow using human genetics to identify cardiovascular candidate genes and relevant cells.** Adapted from [Slenders L. *et al*. **bioRxiv 2021**]()](figures/Figure1.png) -->
 
 
 --------------
