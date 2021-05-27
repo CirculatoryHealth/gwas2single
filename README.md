@@ -49,6 +49,10 @@ renv.lock         | Reproducible R environment | Read only
 <!--  * How people can offer to contribute to the project                    -->
 <!--  * A contributor code of conduct, https://www.contributor-covenant.org/ -->
 
+#### Project data
+
+The data associated with this project is public and references are available in the paper. The original single-cell RNA sequencing data from the Athero-Express is available through [DataverseNL](https://dataverse.nl/dataverse/atheroexpress). The remaining summary results and parsed data will be deposited on Zenodo under [10.5281/zenodo.4823040](https://zenodo.org/record/4823040).
+
 ### Reproducibility
 
 This project uses the Workflow for Open Reproducible Code in Science (WORCS) to
@@ -82,10 +86,12 @@ The framework was based on the [`WORCS` package](https://osf.io/zcvbs/).
 
 ##### Changes log
     
-    _Version:_      v1.0.0</br>
+    _Version:_      v1.0.2</br>
     _Last update:_  2021-05-27</br>
     _Written by:_   Sander W. van der Laan (s.w.vanderlaan-2[at]umcutrecht.nl).
     
+    * v1.0.2 Linking of Zenodo data repository.
+    * v1.0.1 Zenodo release.
     * v1.0.0 Initial version. 
 
 --------------
