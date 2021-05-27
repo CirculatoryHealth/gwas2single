@@ -1,7 +1,7 @@
 GWAS to single cell: Intersecting single-cell transcriptomics and genome wide association studies identifies crucial cell-populations and candidate genes for atherosclerosis.
 ===========================================================
 
-[![DOI](https://zenodo.org/badge/283594863.svg)](https://zenodo.org/badge/latestdoi/283594863)
+[![DOI](https://zenodo.org/badge/369660791.svg)](https://zenodo.org/badge/latestdoi/369660791)
 
 ### This readme
 This readme accompanies the paper _"GWAS to single cell: Intersecting single-cell transcriptomics and genome wide association studies identifies crucial cell-populations and candidate genes for atherosclerosis."_ by [Slenders L. *et al*. **bioRxiv 2021**]().
