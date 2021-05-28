@@ -1,0 +1,167 @@
+### 2020-6-23
+
+# Project GWAS experiment Iguana-1
+
+### GWAS to single cell
+## Genome wide susceptibility loci through the lens of single-cells.
+
+# workflow part 1/3
+# Prepare all GWAS files
+
+# author
+# Lotte Slenders
+# lotteslenders@gmail.com
+
+#-----------------------------------------------------------------------------------------
+### load data 
+# set directory
+setwd("")
+
+# create folder
+result.folder <- paste(Sys.Date(), "results", sep = " ")
+dir.create(result.folder, showWarnings = FALSE)
+
+# R version 3.6.2 (2019-12-12)
+
+### load packages
+library(dplyr)          # v0.7.6
+library(Seurat)         # v3.2.2
+library(ggplot2)        # v3.3.2
+library(ggplotify)      # v0.0.5
+library(cowplot)        # v1.1.0
+library(RColorBrewer)   # v1.1-2
+library(gplots)         # v3.1.0
+library(reshape2)       # v1.4.4
+
+# set seed
+set.seed(456)
+
+#-----------------------------------------------------------------------------------------
+### meta data
+GWAS.meta.data <- read.delim2(file = "20200713_Meta_data_GWAS_foundation_data.txt",
+                              header = T, stringsAsFactors = F )
+
+#-----------------------------------------------------------------------------------------
+### prepare GWAS data
+# load GWAS files
+# all.files <- list.files(path = "C:/Users/lslender/Documents/Projecten/Project GWAS/load",
+#                         pattern= "*.magma.genes.out")
+# load files
+all.files <- list.files(pattern="*.magma.genes.out")
+print(all.files)
+
+all.files
+length(all.files)
+
+# store complete sets
+# complete.dataset.list <- lapply(dir("C:/Users/lslender/Documents/Projecten/Project GWAS/load",
+#                                           pattern = "*.magma.genes.out", recursive = T), 
+#                                 read.delim, stringsAsFactors = F)
+
+# store complete sets
+complete.dataset.list <- lapply(all.files, read.delim, stringsAsFactors = F)
+
+## store only symbols and ZSTAT
+# filter with DEG
+dataset.list <- lapply(complete.dataset.list, function(x) {
+  # select faith of duplicated values
+  # order by Z score
+  x <- x[order(x$ZSTAT, decreasing = T),]
+  # then remove the duplicated values (lower Zscores will be further down)
+  x <- x[!duplicated(x$SYMBOL),]
+  # get rownames
+  rowNames <- (x$SYMBOL)
+  # only keep ZSTAT values
+  x <- data.frame(x[,"ZSTAT"])
+  # set rownames
+  rownames(x) <- rowNames 
+  names(x) <- "ZSTAT"
+  
+  # keep only genes that overlap with DEG
+  #overlap <- intersect(rownames(x), DEG)
+  #x <- x[overlap,, drop = F]
+  
+  return(x) # needed
+  
+})
+
+
+
+## dataset names 
+# https://stackoverflow.com/questions/37755689/split-elements-string-in-r-by-pattern-and-length-before-end
+dataset.names <- gsub(".magma.genes.out", replacement = "\\1", x = all.files)
+names(complete.dataset.list) <- dataset.names
+
+### checkpoint
+# this is minus random
+sum(dataset.names %in% GWAS.meta.data$Abbreviation)
+
+### create random GWAS from all 
+random.gwas <- melt(lapply(dataset.list, tibble::rownames_to_column, 'gene'))
+random.gwas <- data.frame(ZSTAT = rep(20, length(unique(random.gwas$gene))),
+                          row.names = unique(random.gwas$gene))
+head(random.gwas)
+dim(random.gwas)
+
+# append random GWAS to list
+# https://stackoverflow.com/questions/33177118/append-a-data-frame-to-a-list
+dataset.list <- append(dataset.list, list(random.gwas))
+
+# store genes only
+genes.only.dataset.list <- lapply(dataset.list, rownames)
+
+
+dataset.names <- c(dataset.names, "Random")
+dataset.names
+
+names(dataset.list) <- dataset.names
+names(genes.only.dataset.list) <- dataset.names
+
+## custom order of datasets
+# 5 categories
+# cardiovascular <- c("AS", "IS","LAS","SVD", "CES","CAD","CAC", "Plaque", "AF", "HF", "NICM", "PP", "SBP", "HDL", "LDL", "TG", "TC")
+# brain <- c("CpD", "EvrSmk","FrmrSmk", "logOnset", "AD", "ASD", "BIP", "DS", "EA", "Insomnia", "IQ", "MDD", "Neuroticism", "PD")
+# inflammatory <- c("Asthma", "IBD")
+# cancers <- c("BC", "PrCa")
+# # #other <- c("BMI", "T2D", "T2D_EU", "T2DadjBMI", "ALS", "FNBMD", "FABMD", "LSBMD", "Height", "SWB" )
+# other <- c("BMI", "T2D", "T2D_EU", "ALS", "FNBMD", "FABMD", "LSBMD", "Height", "SWB" )
+# 
+# custom.order_sub_categories <- c("Random",cardiovascular, brain, inflammatory, cancers, other)
+# 
+# # 2 or 3 categories
+# cardiovascular <- c("AS", "IS","LAS","SVD", "CES","CAD","CAC", "Plaque", "AF",  "HF", "NICM")
+# risk.factors <- c("PP", "SBP", "HDL", "LDL", "TG", "TC","CpD", "EvrSmk","FrmrSmk", "logOnset", "BMI", "T2D", "T2D_EU")
+# other <- c("BC", "PrCa", "ALS", "FNBMD", "FABMD", "LSBMD", "Height", "SWB", "AD", "ASD", "BIP", "DS", "EA", "Insomnia", "IQ", "MDD", "Neuroticism", "PD", "Asthma", "IBD")
+# 
+# custom.order <- c("Random",cardiovascular, risk.factors, other)
+
+custom.order <- GWAS.meta.data$Abbreviation
+
+# custom order
+dataset.list <- dataset.list[custom.order]
+genes.only.dataset.list <- genes.only.dataset.list[custom.order]
+
+#-----------------------------------------------------------------------------------------
+### meta data
+GWAS.meta.data <- GWAS.meta.data[GWAS.meta.data$Abbreviation %in% custom.order,]
+#https://stackoverflow.com/questions/21549331/how-to-sort-a-data-frame-by-user-defined-e-g-non-alphabetic-order
+GWAS.meta.data$Abbreviation_fct <- factor(GWAS.meta.data$Abbreviation, levels = custom.order)
+GWAS.meta.data<- GWAS.meta.data[order(GWAS.meta.data$Abbreviation_fct),]
+str(GWAS.meta.data)
+
+
+
+#-----------------------------------------------------------------------------------------
+dataset.names <- custom.order
+
+# save GWAS data
+# save(complete.dataset.list, dataset.list, genes.only.dataset.list, dataset.names, custom.order_sub_categories,
+#      GWAS.meta.data,
+#      file = paste(Sys.Date(), "GWAS.foundation.data.RData", sep = "_"))
+
+save(complete.dataset.list, dataset.list, genes.only.dataset.list, dataset.names,
+     GWAS.meta.data,
+     file = paste(Sys.Date(), "GWAS.foundation.data.RData", sep = "_"))
+
+
+

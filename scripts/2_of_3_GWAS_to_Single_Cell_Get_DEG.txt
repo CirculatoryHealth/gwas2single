@@ -1,0 +1,272 @@
+### 2020-6-23
+
+# Project GWAS experiment Iguana-2
+
+### GWAS to single cell
+## Genome wide susceptibility loci through the lens of single-cells.
+
+# workflow part 2/3
+# Get DEG
+
+# author
+# Lotte Slenders
+# lotteslenders@gmail.com
+
+#-----------------------------------------------------------------------------------------
+### load data 
+# set directory
+setwd("")
+
+# create folder
+result.folder <- paste(Sys.Date(), "results", sep = " ")
+dir.create(result.folder, showWarnings = FALSE)
+
+# R version 3.6.2 (2019-12-12)
+
+### load packages
+library(dplyr)          # v0.7.6
+library(Seurat)         # v3.2.2
+library(ggplot2)        # v3.3.2
+library(ggplotify)      # v0.0.5
+library(cowplot)        # v1.1.0
+library(RColorBrewer)   # v1.1-2
+library(gplots)         # v3.1.0
+library(reshape2)       # v1.4.4
+
+# set seed
+set.seed(456)
+
+#-----------------------------------------------------------------------------------------
+### Get single cell data
+### Carotid artery plaques
+seuset <- readRDS(file = "seurat_37_pts_20200701.RDS")
+project.name <- "Carotid.Artery.Plaques"
+
+### liver
+# load corresponding seurat object
+load("MacParland.seurat.RData")
+
+project.name <- "MacParland.et.al.liver"
+
+### islets
+load("Muraro.seurat.RData")
+project.name <- "Muraro.et.al.islets"
+
+### EC subsets
+load("EC_subtypes_in_37_pts.RData")
+#project.name <- "EC.subsets"
+
+### SMC subsets
+load("SMC_subtypes_in_37_pts.RData")
+project.name <- "SMC.subsets"
+
+
+#-----------------------------------------------------------------------------------------
+### colourscheme and idents
+
+if (project.name == "Carotid.Artery.Plaques") {
+  picked.colour <- "#119ccf"
+  # custom order of idents
+  idents <- c("CD3+CD4+ T Cells I", "CD3+CD4+ T Cells II", "CD3+ Regulatory T Cells", "CD3+CD8A+ T cells I",
+              "CD3+CD8A+ T Cells II", "CD3+CD8A+ T cells III", "ACTA2+ Smooth Muscle Cells", "CD34+ Endothelial Cells I",
+              "CD34+ Endothelial Cells II", "CD14+CD68+ Macrophages I", "CD14+CD68+ Macrophages II",
+              "CD14+CD68+ Macrophages III", "NCAM1+ Natural Killer Cells", "CD79A+ B Cells I",
+              "CD79A+ B Cells II", "KIT+ Mast Cells", "Mixed Cells I" , "Mixed Cells II"  )
+  
+} else if (project.name == "MacParland.et.al.liver") {
+  picked.colour <- "#7e10b5"
+  idents <-  c("Erythroid Cells", "AlphaBeta T cells","GammaDelta T cells I", "GammaDelta T Cells II", "NK-like Cells",  
+               "Plasma Cells","Mature B Cells", "Hep1",  "Hep2", "Hep3", "Hep4", "Hep5", "Hep6", "Hepatic Stellate Cells",
+               "Inflammatory Macrophages", "Non-inflammatory Macrophages", "Central Venous LSECs",
+               "Periportal LSECs", "Portal Endothelial Cells", "Cholangiocytes" )
+  
+  # custom order of idents
+} else if (project.name == "Muraro.et.al.islets"){
+  picked.colour <- "#6ca688"
+  idents <-  c("alpha", "beta",  "delta", "epsilon", "pp", "mesenchymal", "endothelial", "acinar","unclear")
+  
+} else if (project.name == "SMC.subsets"){
+  picked.colour <- "#5c0001"
+  idents <-  unique(seuset@meta.data$split.ident)
+  
+} else if (project.name == "EC.subsets"){
+  picked.colour <- "#ff598e" #ff96e4
+  idents <-  unique(seuset@meta.data$split.ident)
+  
+} else {
+  picked.colour <- "red"
+  idents <- unique(as.character(Idents(seuset)))
+}
+
+
+
+#-----------------------------------------------------------------------------------------
+### Get DEG
+# minimum gene expression
+minimum.gene.expression <- 10
+logfoldchange <- 0.25
+
+## pairwise comparison for differential expression
+## one vs. all
+# differential expression findAllMarkers
+differential.expression.all <- FindAllMarkers(object = seuset,
+                                              logfc.threshold = logfoldchange,
+                                              min.pct = minimum.gene.expression/100,
+                                              only.pos = T,
+                                              test.use = "wilcox")
+
+dim(differential.expression.all)
+differential.expression.all <- differential.expression.all[(differential.expression.all$p_val_adj <= 0.05),]
+dim(differential.expression.all)
+
+## one vs one
+# prepare all possible combinations
+choices <- choose(length(idents), 2)        # identify the number of possible pairs
+combinations <- combn(length(idents), 2)    # create those pairs
+
+differential.expression.clusters <- lapply(1:choices, function(i){
+  print(i)
+  
+  # get the first pair
+  cluster1 <- combinations[,i][1] # the first index of the combination
+  cluster2 <- combinations[,i][2] # the second index of the combination
+  
+  # input function must be character
+  cluster1 <- idents[cluster1]
+  cluster2 <- idents[cluster2]
+  
+  # print(cluster1)
+  # print(cluster2)
+  
+  # run formula
+  pairwise.comparison <- FindMarkers(object = seuset,
+                                     ident.1 = cluster1 ,
+                                     ident.2 = cluster2,
+                                     logfc.threshold = logfoldchange, #default 0.25
+                                     min.pct = minimum.gene.expression/100,
+                                     test.use = "wilcox") # default wilcox
+  
+  # select only values with p adjusted of certain value
+  pairwise.comparison <- pairwise.comparison[(pairwise.comparison$p_val_adj <= .05), ]
+  
+  ## subset per cluster
+  # positive logfoldchange corresponds to cluster1
+  cluster1.subset <- subset(pairwise.comparison, avg_logFC > 0) 
+  
+  # if there are no avg_logFC >0
+  if (dim(cluster1.subset)[1] != 0) {
+    cluster1.subset$cluster <- cluster1
+    cluster1.subset$gene <- rownames(cluster1.subset)
+  }
+  
+  
+  # negative logfoldchange corresponds to cluster2
+  cluster2.subset <- subset(pairwise.comparison, avg_logFC < 0) 
+  
+  # if there are no avg_logFC < 0
+  if (dim(cluster2.subset)[1] != 0) {
+    cluster2.subset$cluster <- cluster2
+    cluster2.subset$gene <- rownames(cluster2.subset)
+  }
+  
+  
+  result <- rbind(cluster1.subset, cluster2.subset) 
+  
+  return(result)
+  
+  
+  
+})
+
+differential.expression.clusters <- do.call(rbind.data.frame, differential.expression.clusters)
+
+## if project name is..
+if (project.name == "EC.subsets") {
+  ## Take only the EC subsets to proceed with
+  # establish the idents that will proceed for the analysis
+  idents <- c("EC1", "EC2", "EC3", "EC4", "EC5")
+  
+  # remove the other idents from differential.expression.all
+  differential.expression.all <- differential.expression.all[idents %in% differential.expression.all$cluster, ]
+  
+  # and remove them from differential.expression.clusters
+  differential.expression.clusters <- differential.expression.clusters[idents %in% differential.expression.clusters$cluster,]
+  
+} else if (project.name == "SMC.subsets") {
+  ## Take only the SMC subsets to proceed with
+  # establish the idents that will proceed for the analysis
+  idents <- c("Synthetic Smooth Muscle Cells", "Contractile Smooth Muscle Cells", "Transitional Smooth Muscle Cells")
+  
+  # remove the other idents from differential.expression.all
+  differential.expression.all <- differential.expression.all[idents %in% differential.expression.all$cluster, ]
+  
+  # and remove them from differential.expression.clusters
+  differential.expression.clusters <- differential.expression.clusters[idents %in% differential.expression.clusters$cluster,]
+  
+}
+
+
+DEG <- unique(c(differential.expression.all$gene, differential.expression.clusters$gene))
+
+
+## create DEG genelist per cluster
+celltype.specific.expression <- lapply(idents, function(x){
+  # subset genes from differential.expression.clusters
+  set1 <- subset(differential.expression.clusters, cluster == x)
+  set1 <- set1$gene
+  
+  # subset genes from differential.expression.all
+  set2 <- subset(differential.expression.all, cluster == x)
+  set2 <- set2$gene
+  
+  # combine and unique them
+  result <- stringr::str_sort(unique(c(set1, set2)))
+  
+  # return result
+  return(result)
+  
+})
+
+names(celltype.specific.expression) <- idents
+View(celltype.specific.expression)
+
+
+# save DEG and celltype.specific expression
+save(DEG, celltype.specific.expression, idents, differential.expression.clusters, differential.expression.all, 
+     idents, picked.colour, project.name,
+     file = paste(Sys.Date(), project.name, "DEG.foundation.data.RData", sep = "_"))
+
+
+# file <- paste(project.name, "celltype_specific_DEG.txt", sep = "")
+# conn <- file(description = file, open = "w")
+# 
+# newlist <- lapply(seq_len(length(celltype.specific.expression)), function(i){
+#   temp <- celltype.specific.expression[[i]]
+#   writeLines(text=paste(temp, collapse=","), con=conn, sep="\r\n")  
+# })
+# close(conn)
+
+
+## make plot
+# gather the numbers into a table
+# http://www.sthda.com/english/articles/17-tips-tricks/70-r-find-the-length-of-every-elements-in-a-list/
+input.ggplot <- data.frame(numbers = lengths(celltype.specific.expression),
+                           celltype = idents,
+                           fctr =  factor(idents,levels = idents))
+
+pdf(paste(result.folder, "/", Sys.Date(), "_", project.name, "_logfoldchange",logfoldchange, "_celltype_specific_expression.pdf", sep = ""), useDingbats = F)
+p1<- ggplot(data = input.ggplot, aes(x = fctr, y = numbers))  +
+  geom_bar(stat = "identity", fill = picked.colour) +               # graph type "" #3D1255
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +    # x ticks labels
+  theme(legend.position = "none") +                             # omit legend
+  theme(panel.background = element_blank()) +                   # remove background
+  labs(x = element_blank(), y = "number of DEG") +              # change x and y labels
+  coord_flip() +                                                # flip graph
+  scale_x_discrete(limits = rev(input.ggplot$fctr))             # coord_flip reverses graph, correct this
+p1
+dev.off()  
+
+p1
+
+
+

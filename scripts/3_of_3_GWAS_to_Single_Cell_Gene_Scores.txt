@@ -1,0 +1,443 @@
+### 2020-6-23
+
+## GWAS to single cell
+## Genome wide susceptibility loci through the lens of single-cells.
+
+# workflow part 3/3
+# Calculate gene score
+
+# author
+# Lotte Slenders
+# lotteslenders@gmail.com
+
+#-----------------------------------------------------------------------------------------
+### load data 
+# set directory
+setwd("C:/Users/lslender/Documents/Projecten/Project GWAS/Experiment Iguana")
+
+# create folder
+result.folder <- paste(Sys.Date(), "results", sep = " ")
+dir.create(result.folder, showWarnings = FALSE)
+
+# R version 3.6.2 (2019-12-12)
+# R version 4.0.2 (2020-06-22) -- "Taking Off Again"
+
+### load packages
+library(dplyr)          # v0.7.6
+library(Seurat)         # v3.2.2
+library(ggplot2)        # v3.3.2
+library(ggplotify)      # v0.0.5
+library(cowplot)        # v1.1.0
+library(RColorBrewer)   # v1.1-2
+library(gplots)         # v3.1.0
+library(reshape2)       # v1.4.4
+
+# set seed
+set.seed(456)
+
+### load GWAS data previously defined
+#load("C:/Users/lslender/Documents/Projecten/Project GWAS/Experiment Iguana/old foundation data/2020-07-02_GWAS.foundation.data.RData")
+load("2020-10-13_GWAS.foundation.data.RData")
+
+#-----------------------------------------------------------------------------------------
+### Get single cell data
+## carotid
+# load corresponding seurat object
+seuset <- readRDS(file = "seurat_37_pts_20200701.RDS")
+# load DEG data if previously defined
+load("2020-07-09_Carotid.Artery.Plaques_DEG.foundation.data.RData")
+
+## liver
+# load corresponding seurat object
+load("MacParland.seurat.RData")
+# load DEG data if previously defined
+load("2020-08-10_MacParland.et.al.liver_DEG.foundation.data.RData")
+
+## Langerhans islets
+# load corresponding seurat object
+load("Muraro.seurat.RData")
+# load DEG data if previously defined
+load("2020-07-13_Muraro.et.al.islets_DEG.foundation.data.RData")
+
+## EC subsets
+load("SMC_subtypes_in_37_pts.RData")
+# load DEG data if previously defined
+load("2020-11-11_SMC.subsets_DEG.foundation.data.RData")
+# subset based on idents
+seuset <- subset(seuset, idents = idents)
+
+#-----------------------------------------------------------------------------------------
+### Calculate gene score
+
+## scale data for all genes if your scale data slot does not include all genes
+average.expression <- AverageExpression(seuset,
+                                        return.seurat = T,
+                                        #slot = "scale.data",
+                                        features = rownames(GetAssayData(seuset, slot = "data")))
+
+average.expression <- GetAssayData(average.expression, slot = "scale.data")
+# save(average.expression,
+#      file = paste(Sys.Date(), project.name, "Average.expression.RData", sep = "_") )
+
+# set minima
+zscore.cutoff <- 4
+max.genes.cutoff <- 150
+
+### Calculate score
+## random score for enrichment.
+# get the GWAS
+GWAS <- data.frame(dataset.list["Random"])
+
+# sort these genes on Z score (they already should be)
+GWAS <- GWAS[order(GWAS$ZSTAT, decreasing = T),,drop=F]
+# take only genes with Z score > zscore.cutoff
+path_genes <- rownames(subset(GWAS, ZSTAT >= zscore.cutoff))
+# take only max.genes.cutoff
+#path_genes <- path_genes[1:max.genes.cutoff]
+
+## calculate GWAS.score per celltype
+# get backround universe for wilcox
+random.scores <- lapply(idents, function(x){
+  ## Gene selection
+  # Only score genes that are expressed
+  selected.genes <- path_genes[path_genes %in% unlist(celltype.specific.expression[x])]
+  
+  # select the column from average expression
+  current.celltype <- average.expression[selected.genes,x]
+  
+  ## Give points 
+  # point for expression values between 1 and 2
+  onepoint <- sum(current.celltype >= 1 & current.celltype < 2)
+  # points for expression values above 2
+  twopoint <- sum(current.celltype >= 2) * 2
+  
+  ### GWAS score
+  # correct for path genes and DEG amount per celltype
+  DEG.count <- length(unlist(celltype.specific.expression[x]))
+  path_genes.count <- length(path_genes)
+  
+  GWAS.score <- (onepoint + twopoint) / (path_genes.count/DEG.count)
+  
+})
+
+# prettyfy
+names(random.scores) <- idents
+
+
+# random for wilcox test
+random.wilcox <- lapply(idents, function(x){
+  ## Gene selection
+  # Only score genes that are a DEG for this celltype
+  selected.genes <- path_genes[path_genes %in% unlist(celltype.specific.expression[x])]
+  
+  # select the column from average expression
+  current.celltype <- average.expression[selected.genes,x]
+  
+  scores.for.rank <- data.frame(av.expr = current.celltype,
+                                score = current.celltype)
+  
+  # replace average expression for the score it would have gotten
+  scores.for.rank[scores.for.rank$score <= 1, "score"] <- 0
+  scores.for.rank[scores.for.rank$score >=2, "score"] <- 2
+  scores.for.rank[scores.for.rank$score > 1 & scores.for.rank$score < 2, "score"] <- 1
+  
+  # give score 0 to genes that were not selected
+  not.selected.genes <- rownames(GWAS[!c(rownames(GWAS) %in% selected.genes),,drop = F])
+  not.selected  <- data.frame(av.expr = NA,
+                              score = rep(0, length(not.selected.genes)),
+                              row.names = not.selected.genes) 
+  
+  # combine
+  scores.for.rank <- rbind(scores.for.rank, not.selected)
+  
+  return(scores.for.rank)
+})
+
+names(random.wilcox) <- idents
+
+
+## the rest
+plots.n.ish <- lapply(dataset.names, function(i){
+  print(paste("working on...", i, sep = ""))
+  
+  # get the GWAS
+  GWAS <- data.frame(dataset.list[i])
+  
+  # sort these genes on Z score (they already should be)
+  GWAS <- GWAS[order(GWAS$ZSTAT, decreasing = T),,drop=F]
+  # take only genes with Z score > zscore.cutoff
+  path_genes <- rownames(subset(GWAS, ZSTAT >= zscore.cutoff))
+  # take only max.genes.cutoff
+  # if there are more path genes than cutoff, take that amount, otherwise proceed with current path_genes
+  if (length(path_genes) > max.genes.cutoff) {
+    path_genes <- path_genes[1:max.genes.cutoff]
+  } 
+  
+  
+  # check if you have data
+  if (length(path_genes) == 0) {
+    # print message
+    print(paste("no genes found for", i, "with z-score cutoff >", zscore.cutoff, sep = " "))
+  } 
+  
+  # Assign the scores to the genes meeting thresholds
+  rankings <- lapply(idents, function(x){
+    ## Gene selection
+    # Only score genes that are a DEG for this celltype
+    selected.genes <- path_genes[path_genes %in% unlist(celltype.specific.expression[x])]
+    
+    # select the column from average expression
+    current.celltype <- average.expression[selected.genes,x]
+    
+    # Replace average expression for the score it would have gotten
+    scores.for.rank <- data.frame(score = current.celltype)
+    
+    scores.for.rank[scores.for.rank$score <= 1, "score"] <- 0
+    scores.for.rank[scores.for.rank$score >=2, "score"] <- 2
+    scores.for.rank[scores.for.rank$score > 1 & scores.for.rank$score < 2, "score"] <- 1
+    
+    # add the rest of the selected genes != path genes and give score 0
+    not.selected.genes <- path_genes
+    not.selected.genes <- not.selected.genes[!c(not.selected.genes %in% selected.genes)]
+    not.selected  <- data.frame(score = rep(0, length(not.selected.genes)),
+                                row.names = not.selected.genes) 
+    
+    # combine
+    scores.for.rank <- rbind(scores.for.rank, not.selected)
+    
+    return(scores.for.rank)
+  })
+  
+  # prettyfy
+  names(rankings) <- idents
+  
+  ## calculate enrichment over random data
+  enrichment <- lapply(idents, function(y){
+    # enrichment is fold difference mean of rankings / mean of random rankings
+    
+    # mean of current ident
+    Mean <- mean(rankings[[y]]$score)
+    
+    # random mean of current ident
+    random.Mean <- mean(random.wilcox[[y]]$score)
+    
+    # enrichment
+    enrichment <- Mean/random.Mean
+    
+    # when equasion comes to 0/0 or n/0
+    if (enrichment == "NaN") {
+      enrichment <- 0
+    } 
+    
+    return(enrichment)
+  })
+  
+  # prettyfy
+  names(enrichment) <- idents
+  # make into df
+  enrichment <- t(as.data.frame(enrichment,
+                                row.names = i))
+  
+  ### normalize enrichment
+  maximum <- max(enrichment)
+  minimum <- min(enrichment)
+  
+  # apply calculation over enrichment
+  normalise <- sapply(enrichment, function(x){
+    res <-  (x - minimum) / (maximum - minimum)
+  })
+  
+  # hack into df
+  normalized <- as.data.frame(normalise,
+                              row.names = idents)
+  names(normalized) <- i
+  
+  
+  ### get the expressed path_genes per celltype per GWAS
+  loci.per.celltype <- lapply(idents, function(j){
+    # get selected genes
+    selected.genes <- path_genes[path_genes %in% unlist(celltype.specific.expression[j])]
+    
+    
+    return(selected.genes)
+  })
+  
+  # prettyfy
+  names(loci.per.celltype) <- idents
+  
+  ## Wilcox test
+  Wilcox <- lapply(idents, function(z){
+    ## Gene selection
+    # get scores for current ident
+    current.scores <- rankings[[z]]$score
+    
+    # get the random scores for the test
+    random <- random.wilcox[[z]]["score"]
+    
+    # perform rank test
+    if (length(current.scores) == 0) {
+      p.value <- 1  
+    } else {
+      the.test <- wilcox.test(x = current.scores,
+                              y = random$score,
+                              alternative = "greater",
+                              paired = F)
+      
+      
+      p.value <- the.test$p.value
+    }
+    
+    return(p.value)
+    
+  })
+  
+  # prettyfy
+  names(Wilcox) <- idents
+  
+  
+  
+  ## save in list
+  return.list <- list(rankings, path_genes, subset(average.expression, rownames(average.expression) %in% path_genes), 
+                      enrichment, normalized, loci.per.celltype, Wilcox)
+  names(return.list) <- c("rankings","genes", "average expression", "enrichment", "normalized enrichment", "genes per celltype", "Wilcox")
+  return(return.list)
+  
+})
+
+# add names for clarity
+names(plots.n.ish) <- dataset.names
+# view results
+#View(plots.n.ish)
+
+# save(plots.n.ish, zscore.cutoff, max.genes.cutoff,
+#  file = paste(Sys.Date(), project.name, "_Gene_score_results.RData", sep = "_"))
+
+
+#-----------------------------------------------------------------------------------------
+### make a big dotplot
+
+### make the data work (probably easier way to do it)
+input.ggplot2 <- lapply(dataset.names, function(i){
+  # Get the right information
+  GWAS <- plots.n.ish[[i]]
+  
+  my.data <- data.frame(GWAS = rep(i, length(idents)),
+                        Celltype = factor(idents, levels = idents), # put in own levels for plotting purposes
+                        enrichment = (plots.n.ish[[i]][["enrichment"]][,1]),
+                        normalized.enrichment = plots.n.ish[[i]][["normalized enrichment"]][,1],
+                        Genes.per.score = lengths(plots.n.ish[[i]][["genes per celltype"]]),
+                        p.value = unlist(GWAS[["Wilcox"]]),
+                        stringsAsFactors = T, # make the GWAS a factor, although in this way they are all 1
+                        row.names = NULL)
+  
+})
+
+input.ggplot2 <- do.call(rbind.data.frame, input.ggplot2)
+#View(input.ggplot2)
+
+# group p values for different shape plotting
+input.ggplot2$plot.p.val <- input.ggplot2$p.value
+input.ggplot2[is.na(input.ggplot2$p.value), "plot.p.val"] <- 2
+input.ggplot2[input.ggplot2$plot.p.val > 0.05, "plot.p.val"] <- 2
+input.ggplot2[input.ggplot2$plot.p.val <= 0.05, "plot.p.val"] <- 1
+input.ggplot2$plot.p.val <- factor(input.ggplot2$plot.p.val , levels = c("1", "2"))
+
+# log10 of p values
+input.ggplot2$log.p.value <- -log10(input.ggplot2$p.value)
+
+# log10 of p values adjusted
+input.ggplot2$log.p.value.adj <- input.ggplot2$log.p.value
+input.ggplot2[input.ggplot2$log.p.value > -log10(1e-05), "log.p.value.adj"] <- -log10(1e-05)
+#input.ggplot2[input.ggplot2$log.p.value <= -log10(0.051), "log.p.value.adj"] <- -log10(100)
+
+## adjusted enrichment
+# create new colum for adjusted values
+input.ggplot2$enrichment.adj <- input.ggplot2$enrichment
+# set NA to 0
+input.ggplot2[is.na(input.ggplot2$enrichment.adj), "enrichment.adj"] <- 0
+# set outliers to max of 5
+input.ggplot2[input.ggplot2$enrichment.adj > 5, "enrichment.adj"] <- 5
+# make non significant p values enrichment 0 for plotting
+input.ggplot2[input.ggplot2$p.value > 0.05, "enrichment.adj"] <- 0
+
+# remove random column
+input.ggplot2 <- input.ggplot2[input.ggplot2$GWAS != "Random",]
+
+#str(input.ggplot2)
+
+#save(input.ggplot2,
+#     file = paste(Sys.Date(), project.name, zscore.cutoff, max.genes.cutoff, "input.ggplot2.RData", sep = "_"))
+
+
+### plot
+## bubbleplot
+pdf(paste(result.folder, "/", Sys.Date(), "_", project.name, "_bubbelplot", "_Zscore_", zscore.cutoff,"_max_genes_",max.genes.cutoff,  ".pdf", sep = ""), width = 15)
+
+ggplot(data = input.ggplot2, aes(x = GWAS, y = Celltype, group = plot.p.val ))  + 
+  geom_point(aes(colour = enrichment.adj, size = log.p.value.adj))  +   # make the bubble plot heatmap style
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +                # x ticks labels
+  theme(panel.background = element_blank())  +                           # remove background
+  scale_y_discrete(limits = rev(levels(input.ggplot2$Celltype)))  +    # reverse the plotting order of Y axis (only works if levels are set correctly in input)
+  scale_color_gradient2(low= "white", mid = "white", midpoint = 1 , high = picked.colour, limits = c(0, 5),  # change scale bar color, set limits
+                        labels = c("0", "1", "2", "3", "4", ">= 5") ) +         # change labels for tick marks
+  guides(colour = guide_colourbar(barwidth = 0.5, barheight = 10)) +  #make skinny scale bar
+  scale_size_continuous("p value", trans = "identity", breaks=c(1.3, 2, 3, 5),  # adjust scale size appearance
+                        guide = guide_legend(override.aes = list(colour= picked.colour)),
+                        labels = c("0.05", "0.01", "0.001",  "< 1e-05")) + 
+  ggtitle(label = paste(project.name, "with z score cutoff", zscore.cutoff,  "and maximum", max.genes.cutoff, "genes", sep = " ")) +
+  labs(colour = "Enrichment", y = "Cell-population", size = "P value")     # change labels on legend and axis
+
+dev.off()
+
+
+## enrichments and p values
+# 
+# pdf(paste(result.folder, "/", Sys.Date(), "_", project.name, "_density", "_Zscore_", zscore.cutoff,"_max_genes_",max.genes.cutoff,  ".pdf", sep = ""), width = 15)
+# 
+# # plot density of enrichments
+# ggplot(data = input.ggplot2, aes(x = enrichment)) +
+#   geom_density(color = picked.colour) +
+#   ggtitle(label = paste("Enrichment;", project.name, "with z score cutoff", zscore.cutoff, "and max genes", max.genes.cutoff , sep = " ")) +
+#   labs(x = "enrichment")
+# 
+# # plot density normalized.enrichment
+# ggplot(data = input.ggplot2, aes(x = normalized.enrichment)) +
+#   geom_density(color = picked.colour) +
+#   ggtitle(label = paste("Normalized enrichment;", project.name, "with z score cutoff", zscore.cutoff, "and max genes", max.genes.cutoff , sep = " ")) +
+#   labs(x = "Normalized enrichment") +
+#   ylim(0,3)
+# 
+# 
+# # plot density p values
+# ggplot(data = input.ggplot2, aes(x = p.value)) +
+#   geom_density(color = picked.colour) +
+#   ggtitle(label = paste("p values;", project.name, "with z score cutoff", zscore.cutoff, "and max genes", max.genes.cutoff , sep = " ")) +
+#   labs(x = "p value")
+# 
+# dev.off()
+
+
+
+# #-----------------------------------------------------------------------------------------
+# 
+# ### save other stuff
+# 
+# # enrichments
+# to.save <- lapply(dataset.names, function(i){
+#   # put all enrichments together 
+#   enrichments <- plots.n.ish[[i]][["enrichment"]]
+#   
+# })
+# names(to.save) <- dataset.names
+# to.save <- do.call(cbind.data.frame, to.save)
+# write.csv(t(to.save), paste(project.name, "_Enrichments.txt", sep = ""))
+# 
+# # p values
+# to.save <- lapply(dataset.names, function(i){
+#   enrichments <- plots.n.ish[[i]][["Wilcox"]]
+# })
+# names(to.save) <- dataset.names
+# to.save <- do.call(rbind.data.frame, to.save)
+# write.csv(to.save, paste(project.name, "_P_values.txt", sep = ""))
+
+
