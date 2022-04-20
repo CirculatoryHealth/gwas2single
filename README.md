@@ -4,7 +4,7 @@ GWAS to single cell: Intersecting single-cell transcriptomics and genome wide as
 [![DOI](https://zenodo.org/badge/369660791.svg)](https://zenodo.org/badge/latestdoi/369660791)
 
 ### This readme
-This readme accompanies the paper _"GWAS to single cell: Intersecting single-cell transcriptomics and genome wide association studies identifies crucial cell-populations and candidate genes for atherosclerosis."_ by [Slenders L. *et al*. **bioRxiv 2021**]().
+This readme accompanies the paper _"GWAS to single cell: Intersecting single-cell transcriptomics and genome-wide association studies identifies crucial cell populations and candidate genes for atherosclerosis."_ by [Slenders L. *et al*. **European Heart Journal Open 2022**](https://doi.org/10.1093/ehjopen/oeab043).
 
 --------------
 
@@ -51,7 +51,7 @@ renv.lock         | Reproducible R environment | Read only
 
 #### Project data
 
-The data associated with this project is public and references are available in the paper. The original single-cell RNA sequencing data from the Athero-Express is available through [DataverseNL](https://dataverse.nl/dataverse/atheroexpress). The remaining summary results and parsed data will be deposited on Zenodo under [10.5281/zenodo.4823040](https://zenodo.org/record/4823040).
+The data associated with this project is public and references are available in the paper. The original single-cell RNA sequencing data from the Athero-Express is available through [DataverseNL](https://doi.org/10.34894/TYHGEF). The remaining summary results and parsed data will be deposited on Zenodo under [10.5281/zenodo.4823040](https://zenodo.org/record/4823040).
 
 ### Reproducibility
 
@@ -86,10 +86,11 @@ The framework was based on the [`WORCS` package](https://osf.io/zcvbs/).
 
 ##### Changes log
     
-    _Version:_      v1.0.2</br>
-    _Last update:_  2021-05-27</br>
+    _Version:_      v1.0.3</br>
+    _Last update:_  2022-04-20</br>
     _Written by:_   Sander W. van der Laan (s.w.vanderlaan-2[at]umcutrecht.nl).
     
+    * v1.0.3 Update to DataverseNL link.
     * v1.0.2 Linking of Zenodo data repository.
     * v1.0.1 Zenodo release.
     * v1.0.0 Initial version. 
